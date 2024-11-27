@@ -3,6 +3,8 @@ package edu.example.wayfarer.service;
 import edu.example.wayfarer.dto.room.RoomRequestDTO;
 import edu.example.wayfarer.dto.room.RoomResponseDTO;
 import edu.example.wayfarer.dto.room.RoomUpdateDTO;
+import edu.example.wayfarer.entity.Member;
+import edu.example.wayfarer.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -22,17 +24,20 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class RoomServiceTest {
     @Autowired
     private RoomService roomService;
+    @Autowired
+    private MemberRepository memberRepository;
 
     @Test
     @Transactional
     @Commit
     public void testCreateRoom() {
         RoomRequestDTO roomRequestDTO = new RoomRequestDTO(
+                "jj@jj.com", // 임시 이메일
                 "고향",
                 "캐나다",
                 LocalDate.of(2024, 11, 29),
-                LocalDate.of(2024, 11, 30),
-                "jj@jj.com" // 임시 이메일
+                LocalDate.of(2024, 11, 30)
+
         );
         RoomResponseDTO result = roomService.create(roomRequestDTO);
         assertNotNull(result);
@@ -51,9 +56,11 @@ public class RoomServiceTest {
     @Transactional
     @Commit
     public void testUpdateRoom() {
-        String roomId = "TSNAnwj4";
+        String email = "aa@aa.com";
+        Member member = memberRepository.findByEmail(email).get();
         RoomUpdateDTO roomUpdateDTO = new RoomUpdateDTO(
                 "TSNAnwj4", // roomId
+                member,
                 "후후탕후루를먹자", // title
                 "중국", // country
                 LocalDate.of(2025, 1, 1), // startDate
@@ -70,6 +77,8 @@ public class RoomServiceTest {
     @Commit
     public void testDeleteRoom(){
         String roomId = "vTJBdpwg";
-        roomService.delete(roomId);
+        String email = "aa@aa.com";
+        Member member = memberRepository.findByEmail(email).get();
+        roomService.delete(member,roomId);
     }
 }

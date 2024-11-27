@@ -32,4 +32,10 @@ public class Schedule {
     @Enumerated(EnumType.STRING)
     private Days date;
 
+    private LocalDate actualDate;
+
+    public void changeActualDate(LocalDate actualDate) {
+        this.actualDate = actualDate;
+    }
+
 }

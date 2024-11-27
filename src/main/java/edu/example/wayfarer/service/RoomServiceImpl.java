@@ -123,19 +123,32 @@ public class RoomServiceImpl implements RoomService {
         long oldSession = ChronoUnit.DAYS.between(room.getStartDate(), room.getEndDate())+1;
         long newSession = ChronoUnit.DAYS.between(roomUpdateDTO.startDate(), roomUpdateDTO.endDate())+1;
 
+        LocalDate oldStartDate = room.getStartDate();   // 이전 여행 시작일
+        LocalDate newStartDate = roomUpdateDTO.startDate(); // 새로운 여행 시작일
+
         room.changeStartDate(roomUpdateDTO.startDate());
         room.changeEndDate(roomUpdateDTO.endDate());
 
+        List<Schedule> allSchedules = scheduleRepository.findByRoom_RoomId(roomUpdateDTO.roomId());
+        for(int i =0; i<allSchedules.size(); i++){
+            Schedule schedule = allSchedules.get(i);
+            LocalDate updatedDate = newStartDate.plusDays(i / PlanType.values().length);
+            schedule.changeActualDate(updatedDate);
+        }
+        scheduleRepository.saveAll(allSchedules);
+
         if(newSession > oldSession){
             for(long i = oldSession + 1; i <= newSession; i++){
-                System.out.println("starting DAY"+i);
                 String dayValue = "DAY" + i;
                 Days day = Days.valueOf(dayValue);
+
+                LocalDate actualDate = newStartDate.plusDays(i-1);  // 새로운 시작 날짜 기준으로 actualDate 계산
 
                 for (PlanType planType : PlanType.values()){
                     Schedule newSchedule = Schedule.builder()
                             .room(room)
                             .date(day)
+                            .actualDate(actualDate)
                             .planType(planType)
                             .build();
                     scheduleRepository.save(newSchedule);
@@ -201,14 +214,17 @@ public class RoomServiceImpl implements RoomService {
 
         Days[] days = Days.values();
         for(int i = 0; i < daysBetween; i++) {
+            LocalDate currentDate = startDate.plusDays(i);
             for (PlanType planType : PlanType.values()){
                 schedules.add(Schedule.builder()
                         .room(room)
                         .planType(planType)
                         .date(days[i])
+                        .actualDate(currentDate)
                         .build()
                 );
             }
+
         }
         scheduleRepository.saveAll(schedules);
     }
