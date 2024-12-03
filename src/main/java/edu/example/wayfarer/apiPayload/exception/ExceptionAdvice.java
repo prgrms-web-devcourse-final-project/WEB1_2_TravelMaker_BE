@@ -3,6 +3,7 @@ package edu.example.wayfarer.apiPayload.exception;
 import edu.example.wayfarer.apiPayload.BaseResponse;
 import edu.example.wayfarer.apiPayload.code.ErrorReasonDTO;
 import edu.example.wayfarer.apiPayload.code.status.ErrorStatus;
+import edu.example.wayfarer.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,8 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -127,5 +130,65 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
                 errorCommonStatus.getHttpStatus(),
                 request
         );
+    }
+
+    @ExceptionHandler(GeocodingTaskException.class)
+    public ResponseEntity<?> handleGeocodingTaskException(GeocodingTaskException e) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error message", e.getMessage());
+        errorResponse.put("status", e.getStatus());
+        errorResponse.put("timestamp", LocalDateTime.now());
+
+        return ResponseEntity
+                .status(e.getStatus())
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(ScheduleItemTaskException.class)
+    public ResponseEntity<?> handleScheduleItemTaskException(ScheduleItemTaskException e) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error message", e.getMessage());
+        errorResponse.put("status", e.getStatus());
+        errorResponse.put("timestamp", LocalDateTime.now());
+
+        return ResponseEntity
+                .status(e.getStatus())
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(MarkerTaskException.class)
+    public ResponseEntity<?> handleMarkerTaskException(MarkerTaskException e) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error message", e.getMessage());
+        errorResponse.put("status", e.getStatus());
+        errorResponse.put("timestamp", LocalDateTime.now());
+
+        return ResponseEntity
+                .status(e.getStatus())
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(ScheduleTaskException.class)
+    public ResponseEntity<?> handleScheduleTaskException(ScheduleTaskException e) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error message", e.getMessage());
+        errorResponse.put("status", e.getStatus());
+        errorResponse.put("timestamp", LocalDateTime.now());
+
+        return ResponseEntity
+                .status(e.getStatus())
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(RoomTaskException.class)
+    public ResponseEntity<?> handleRoomTaskException(RoomTaskException e) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error message", e.getMessage());
+        errorResponse.put("status", e.getStatus());
+        errorResponse.put("timestamp", LocalDateTime.now());
+
+        return ResponseEntity
+                .status(e.getStatus())
+                .body(errorResponse);
     }
 }
