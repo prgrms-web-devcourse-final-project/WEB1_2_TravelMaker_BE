@@ -13,13 +13,4 @@ public record MemberRoomResponseDTO(
         Color color,
         LocalDateTime joinDate
 ) {
-    public MemberRoomResponseDTO(MemberRoom memberRoom) {
-        this(
-                memberRoom.getMemberRoomId(),
-                memberRoom.getRoom().getRoomId(),
-                memberRoom.getMember().getEmail(),
-                memberRoom.getColor(),
-                memberRoom.getJoinDate()
-        );
-    }
 }

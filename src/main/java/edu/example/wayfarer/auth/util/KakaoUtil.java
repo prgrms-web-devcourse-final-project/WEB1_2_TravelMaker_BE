@@ -1,58 +1,53 @@
 package edu.example.wayfarer.auth.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.example.wayfarer.apiPayload.code.status.ErrorStatus;
 import edu.example.wayfarer.apiPayload.exception.handler.AuthHandler;
 import edu.example.wayfarer.dto.KakaoDTO;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Profile;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Arrays;
+import java.util.Map;
 
 @Component
 @Slf4j
 public class KakaoUtil {
+    @Value("${KAKAO_CLIENT_ID}")
+    private String client_id;
+    @Value("${KAKAO_CLIENT_SECRET}")
+    private String client_secret;
+    @Value("${spring.security.oauth2.client.registration.kakao.redirect-uri}")
+    private String redirect_uri;
+    private final RestTemplate restTemplate = new RestTemplate();//REST API 호출을 위한 객체
 
-    @Value("${spring.kakao.auth.client}")
-    private String client;
-    @Value("${spring.kakao.auth.redirect}")
-    private String redirect;
-    @Value("${kakao.api.url.mock:false}")
-    private boolean isMock;
+    public KakaoDTO.OAuthToken getAccessToken(String authorizationCode) {
+        log.info("Authorization Code: {}", authorizationCode);
 
-    public KakaoDTO.OAuthToken requestToken(String accessCode) {
-        if (isMock) {
-            KakaoDTO.OAuthToken token = new KakaoDTO.OAuthToken();
-            token.setAccess_token("mockAccessToken");
-            token.setRefresh_token("mockRefreshToken");
-            return token;
-        }
-        RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
-        headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("grant_type", "authorization_code");
-        params.add("client_id", client);
-        params.add("redirect_url", redirect);
-        params.add("code", accessCode);
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("code", authorizationCode);
+        body.add("client_id", client_id);
+        body.add("client_secret", client_secret);
+        body.add("redirect_uri", redirect_uri);
+        body.add("grant_type", "authorization_code");
 
-        HttpEntity<MultiValueMap<String, String>> kakaoTokenRequest = new HttpEntity<>(params, headers);
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
 
-        ResponseEntity<String> response = restTemplate.exchange("https://kauth.kakao.com/oauth/token", HttpMethod.POST, kakaoTokenRequest, String.class);
+        log.info("Access Token Request: {}", request); // 요청 로깅
+
+        ResponseEntity<String> response = restTemplate.postForEntity(
+                "https://kauth.kakao.com/oauth/token", request, String.class);
 
         ObjectMapper objectMapper = new ObjectMapper();
-
         KakaoDTO.OAuthToken oAuthToken = null;
 
         try {
@@ -64,60 +59,49 @@ public class KakaoUtil {
         return oAuthToken;
     }
 
-    public KakaoDTO.KakaoProfile requestProfile(KakaoDTO.OAuthToken oAuthToken){
-        RestTemplate restTemplate2 = new RestTemplate();
-        HttpHeaders headers2 = new HttpHeaders();
+    public KakaoDTO.KakaoProfile getUserInfo(KakaoDTO.OAuthToken oAuthToken) {
 
-        headers2.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
-        headers2.add("Authorization","Bearer "+ oAuthToken.getAccess_token());
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(oAuthToken.getAccess_token());
 
-        HttpEntity<MultiValueMap<String,String>> kakaoProfileRequest = new HttpEntity <>(headers2);
+        HttpEntity<MultiValueMap<String,String>> request = new HttpEntity <>(headers);//헤더만 포함된 HttpEntity 객체생성
 
-        ResponseEntity<String> response2 = restTemplate2.exchange(
-                "https://kapi.kakao.com/v2/user/me", HttpMethod.GET, kakaoProfileRequest, String.class);
+        ResponseEntity<String> response = restTemplate.exchange(
+                "https://kapi.kakao.com/v2/user/me",
+                HttpMethod.GET, request, String.class);
 
         ObjectMapper objectMapper = new ObjectMapper();
 
         KakaoDTO.KakaoProfile kakaoProfile = null;
-
         try {
-            System.out.println(response2.getBody());
-            kakaoProfile = objectMapper.readValue(response2.getBody(), KakaoDTO.KakaoProfile.class);
+            System.out.println(response.getBody());
+            kakaoProfile = objectMapper.readValue(response.getBody(), KakaoDTO.KakaoProfile.class);
         } catch (JsonProcessingException e) {
             log.info(Arrays.toString(e.getStackTrace()));
             throw new AuthHandler(ErrorStatus._PARSING_ERROR);
         }
-
         return kakaoProfile;
     }
 
     // 추가된 메서드: Kakao 토큰 폐기
-    public void revokeToken(String accessToken) {
-        if (isMock) {
-            log.info("Mock revoke token: " + accessToken);
-            return;
-        }
-        RestTemplate restTemplate = new RestTemplate();
+    public void revokeToken(String oauthToken) {
+        String revokeUrl = "https://kapi.kakao.com/v1/user/logout"; // 카카오 Access Token 폐기 API URL
+
         HttpHeaders headers = new HttpHeaders();
-        headers.add("Authorization", "Bearer " + accessToken);
-        headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.set("Authorization", "Bearer " + oauthToken); // Bearer 형식으로 토큰 전달
 
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        // 필요한 경우 추가 파라미터 설정
-
-        HttpEntity<MultiValueMap<String, String>> kakaoRevokeRequest = new HttpEntity<>(params, headers);
+        HttpEntity<Void> request = new HttpEntity<>(headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    "https://kapi.kakao.com/v1/user/logout",
-                    HttpMethod.POST,
-                    kakaoRevokeRequest,
-                    String.class
-            );
-            log.info("Kakao token revoked: " + response.getBody());
+            ResponseEntity<String> response = restTemplate.postForEntity(revokeUrl, request, String.class);
+            if (response.getStatusCode() == HttpStatus.OK) {
+                log.info("Successfully revoked token: {}", oauthToken);
+            } else {
+                log.warn("Failed to revoke token: {}. Status Code: {}", oauthToken, response.getStatusCode());
+            }
         } catch (Exception e) {
-            log.error("Error revoking Kakao token: " + e.getMessage());
-            throw new AuthHandler(ErrorStatus._AUTH_INVALID_TOKEN);
+            log.error("Error revoking token: {}", e.getMessage());
         }
     }
 }

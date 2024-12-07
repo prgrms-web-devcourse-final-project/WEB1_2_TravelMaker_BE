@@ -22,7 +22,7 @@ public class GoogleUtil {
     private String redirect_uri;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    public String getAccessToken(String authorizationCode) {
+    public String getOAuthToken(String authorizationCode) {
         log.info("Authorization Code: {}", authorizationCode); // Authorization Code 로깅
 
         HttpHeaders headers = new HttpHeaders();
@@ -47,6 +47,7 @@ public class GoogleUtil {
         return response.getBody().get("access_token").toString();
     }
 
+
     public GoogleUserInfo getUserInfo(String accessToken) {
         // Access Token으로 사용자 정보 요청
         HttpHeaders headers = new HttpHeaders();
@@ -64,8 +65,8 @@ public class GoogleUtil {
     }
 
     // 구글 Access Token을 폐기하는 메서드 추가
-    public void revokeToken(String token) {
-        String revokeUrl = "https://oauth2.googleapis.com/revoke?token=" + token;
+    public void revokeToken(String oauthToken) {
+        String revokeUrl = "https://oauth2.googleapis.com/revoke?token=" + oauthToken;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -75,9 +76,9 @@ public class GoogleUtil {
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(revokeUrl, request, String.class);
             if (response.getStatusCode() == HttpStatus.OK) {
-                log.info("Successfully revoked token: {}", token);
+                log.info("Successfully revoked token: {}", oauthToken);
             } else {
-                log.warn("Failed to revoke token: {}. Status Code: {}", token, response.getStatusCode());
+                log.warn("Failed to revoke token: {}. Status Code: {}", oauthToken, response.getStatusCode());
             }
         } catch (Exception e) {
             log.error("Error revoking token: {}", e.getMessage());

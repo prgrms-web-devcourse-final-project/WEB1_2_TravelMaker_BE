@@ -1,38 +1,46 @@
 package edu.example.wayfarer.service;
 
-import edu.example.wayfarer.apiPayload.exception.AuthorizationException;
-import edu.example.wayfarer.auth.util.KakaoUtil;
-import edu.example.wayfarer.auth.util.SecurityUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.example.wayfarer.exception.AuthorizationException;
+import edu.example.wayfarer.converter.MemberRoomConverter;
+import edu.example.wayfarer.converter.RoomConverter;
 import edu.example.wayfarer.dto.room.RoomRequestDTO;
 import edu.example.wayfarer.dto.room.RoomResponseDTO;
 import edu.example.wayfarer.dto.room.RoomUpdateDTO;
-import edu.example.wayfarer.entity.Member;
-import edu.example.wayfarer.entity.MemberRoom;
-import edu.example.wayfarer.entity.Room;
-import edu.example.wayfarer.entity.Schedule;
+import edu.example.wayfarer.entity.*;
 import edu.example.wayfarer.entity.enums.Color;
-import edu.example.wayfarer.entity.enums.Days;
+//import edu.example.wayfarer.entity.enums.Days;
 import edu.example.wayfarer.entity.enums.PlanType;
 import edu.example.wayfarer.exception.RoomException;
 import edu.example.wayfarer.repository.*;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class RoomServiceImpl implements RoomService {
+    @Autowired
+    @Qualifier("jsonRedisTemplate")
+    private RedisTemplate<String, Object> jsonRedisTemplate;
     private final RoomRepository roomRepository;
     private final MemberRepository memberRepository;
     private final MemberRoomRepository memberRoomRepository;
     private final ScheduleRepository scheduleRepository;
+    private final ObjectMapper objectMapper;
+
 
     /*
     create 설명
@@ -48,55 +56,52 @@ public class RoomServiceImpl implements RoomService {
      */
     @Override
     @Transactional
-    public RoomResponseDTO create(RoomRequestDTO roomRequestDTO) {
+    public RoomResponseDTO create(RoomRequestDTO roomRequestDTO, String email) {
         // 날짜 유효성 검사
         validateDates(roomRequestDTO);
-
-
-        Room room = Room.builder()
-                .title(roomRequestDTO.title())
-                .country(roomRequestDTO.country())
-                .startDate(roomRequestDTO.startDate())
-                .endDate(roomRequestDTO.endDate())
-                .hostEmail(roomRequestDTO.email())
-                .memberRooms(new ArrayList<>())
-                .build();
+        Room room = RoomConverter.toRoom(roomRequestDTO);
+        room.setHostEmail(email);
 
         // 랜덤 roomId와 roomCode 생성
         generateRoomIdAndCode(room);
-        // url 생성
-        String url = generateRoomUrl(room.getRoomId());
-        room.setUrl(url);
         // 방 저장
         Room savedRoom = roomRepository.save(room);
 
         //memberRoom 저장
-        // currentUser로 지정 나중에
         Member foundMember = memberRepository.findById(room.getHostEmail()).orElseThrow();
         // Color enum을 배열화
         Color[] colors = Color.values();
-        // memberRoom을 build
-        MemberRoom memberRoom = MemberRoom.builder()
-                .member(foundMember)
-                .room(savedRoom)
-                .color(colors[1]).build();
+        MemberRoom memberRoom = MemberRoomConverter.toMemberRoom(savedRoom, foundMember, colors[1]);
         savedRoom.getMemberRooms().add(memberRoom);
         memberRoomRepository.save(memberRoom);
+
+        //Redis에 memberRoom 캐시 추가
+        Map<String, Object> memberInfo = new LinkedHashMap<>();
+        memberInfo.put("nickname", foundMember.getNickname());
+        memberInfo.put("profileImage", foundMember.getProfileImage());
+
+        try {
+            // Field, Map을 JSON 문자열로 변환
+            String jsonMemberInfo = objectMapper.writeValueAsString(memberInfo);
+            jsonRedisTemplate.opsForHash().put("Member:" + room.getRoomId(), email, jsonMemberInfo);
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
 
         // schedule 저장
         saveSchedules(savedRoom, roomRequestDTO.startDate(), roomRequestDTO.endDate());
 
-        return new RoomResponseDTO(savedRoom);
+        return RoomConverter.toRoomResponseDTO(savedRoom);
     }
 
     @Override
     public RoomResponseDTO read(String roomId) {
         Room room = roomRepository.findById(roomId)
-                .orElseThrow(()-> new NoSuchElementException("해당 방이 존재하지 않습니다."));
+                .orElseThrow(RoomException.NOT_FOUND::get);
 
-        List<MemberRoom> members = memberRoomRepository.findAllByRoom_RoomId(roomId);
+        List<MemberRoom> members = memberRoomRepository.findAllByRoomRoomId(roomId);
         room.setMemberRooms(members);
-        return new RoomResponseDTO(room);
+        return RoomConverter.toRoomResponseDTO(room);
     }
 
     /*
@@ -108,62 +113,32 @@ public class RoomServiceImpl implements RoomService {
     5. 여행이 짧아졌다면, 기존에 있던 마지막 날들을 삭제합니다.
      */
     @Override
-    public RoomResponseDTO update(RoomUpdateDTO roomUpdateDTO) {
+    public RoomResponseDTO update(RoomUpdateDTO roomUpdateDTO, String email) {
         Room room = roomRepository.findById(roomUpdateDTO.roomId())
-                .orElseThrow(()-> new NoSuchElementException("해당 방이 존재하지 않습니다."));
+                .orElseThrow(RoomException.NOT_FOUND::get);
 
-        // 로그인한 사용자가 해당 방의 방장이 맞는지 아닌지 확인
-        if(!roomUpdateDTO.member().getEmail().equals(room.getHostEmail())){
-            throw new AuthorizationException("권한이 없습니다.");
-        }
+        // 권한 확인
+        verifyHost(email, room.getHostEmail());
 
-        room.changeCountry(roomUpdateDTO.country());
-        room.changeTitle(roomUpdateDTO.title());
+        // 방 정보 업데이트
+        updateRoomDetails(room, roomUpdateDTO);
 
-        long oldSession = ChronoUnit.DAYS.between(room.getStartDate(), room.getEndDate())+1;
-        long newSession = ChronoUnit.DAYS.between(roomUpdateDTO.startDate(), roomUpdateDTO.endDate())+1;
-
-        room.changeStartDate(roomUpdateDTO.startDate());
-        room.changeEndDate(roomUpdateDTO.endDate());
-
-        if(newSession > oldSession){
-            for(long i = oldSession + 1; i <= newSession; i++){
-                System.out.println("starting DAY"+i);
-                String dayValue = "DAY" + i;
-                Days day = Days.valueOf(dayValue);
-
-                for (PlanType planType : PlanType.values()){
-                    Schedule newSchedule = Schedule.builder()
-                            .room(room)
-                            .date(day)
-                            .planType(planType)
-                            .build();
-                    scheduleRepository.save(newSchedule);
-                }
-            }
-        }else if(newSession < oldSession){
-            for(long i = newSession + 1; i <= oldSession; i++){
-                String dayValue = "DAY" + i;
-                Days day = Days.valueOf(dayValue);
-
-                List<Schedule> schedulesToDelete = scheduleRepository.findByRoomAndDate(room, day);
-                scheduleRepository.deleteAll(schedulesToDelete);
-            }
-        }
-        return new RoomResponseDTO(roomRepository.save(room));
+        // 스케줄 정보 업데이트
+        updateSchedules(room, roomUpdateDTO);
+        return RoomConverter.toRoomResponseDTO(roomRepository.save(room));
     }
 
+    // 방 삭제 메서드
     @Override
     public void delete(Member member, String roomId) {
         Room room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new NoSuchElementException("삭제할 방이 존재하지 않습니다."));
+                .orElseThrow(RoomException.NOT_FOUND::get);
 
-        // 로그인한 사용자와 room.HostEmail이 맞지 않으면 오류처리 : 방장만 삭제 가능합니다
-        if(!member.getEmail().equals(room.getHostEmail())){
-            throw new AuthorizationException("권한이 없습니다.");
-        }
-        scheduleRepository.deleteByRoomId(roomId);
-        memberRoomRepository.deleteByRoomId(roomId);
+        verifyHost(member.getEmail(), room.getHostEmail());
+
+        jsonRedisTemplate.delete("ChatMessage:" + roomId);
+        jsonRedisTemplate.delete("Member:" + roomId);
+
         roomRepository.delete(room);
     }
 
@@ -191,26 +166,87 @@ public class RoomServiceImpl implements RoomService {
         room.setRoomCode(roomCode);
     }
 
-    private String generateRoomUrl(String roomId){
-        return "https://wayfarer.com/rooms/" + roomId;
-    }
 
     private void saveSchedules(Room room, LocalDate startDate, LocalDate endDate) {
         long daysBetween = ChronoUnit.DAYS.between(startDate, endDate) + 1;
         List<Schedule> schedules = new ArrayList<>();
 
-        Days[] days = Days.values();
         for(int i = 0; i < daysBetween; i++) {
+            LocalDate currentDate = startDate.plusDays(i);
             for (PlanType planType : PlanType.values()){
                 schedules.add(Schedule.builder()
                         .room(room)
                         .planType(planType)
-                        .date(days[i])
+                        .actualDate(currentDate)
                         .build()
                 );
             }
+
         }
         scheduleRepository.saveAll(schedules);
+    }
+
+    private void verifyHost(String requestEmail, String hostEmail){
+        if(!requestEmail.equals(hostEmail)){
+            throw AuthorizationException.UNAUTHORIZED.get();
+        }
+    }
+
+    private void updateRoomDetails(Room room, RoomUpdateDTO roomUpdateDTO) {
+        room.changeTitle(roomUpdateDTO.title());
+        room.changeCountry(roomUpdateDTO.country());
+        room.changeStartDate(roomUpdateDTO.startDate());
+        room.changeEndDate(roomUpdateDTO.endDate());
+    }
+
+    private void updateSchedules(Room room, RoomUpdateDTO roomUpdateDTO){
+        long oldSession = ChronoUnit.DAYS.between(room.getStartDate(), room.getEndDate())+1;
+        long newSession = ChronoUnit.DAYS.between(roomUpdateDTO.startDate(), roomUpdateDTO.endDate())+1;
+
+        LocalDate newStartDate = roomUpdateDTO.startDate(); // 새로운 여행 시작일
+
+        List<Schedule> allSchedules = scheduleRepository.findByRoom_RoomId(roomUpdateDTO.roomId());
+        updateExistingSchedule(allSchedules, newStartDate);
+
+        if(newSession > oldSession) {
+            addNewSchedules(room, newStartDate, oldSession, newSession);
+        } else if (newSession < oldSession) {
+            deleteExtraSchedule(room, newStartDate, newSession, oldSession);
+        }
+    }
+
+    private void updateExistingSchedule(List<Schedule> schedules, LocalDate newStartDate){
+        for(int i =0; i<schedules.size(); i++){
+            Schedule schedule = schedules.get(i);
+            LocalDate updatedDate = newStartDate.plusDays(i / PlanType.values().length);
+            schedule.changeActualDate(updatedDate);
+        }
+        scheduleRepository.saveAll(schedules);
+    }
+
+    private void addNewSchedules(Room room, LocalDate newStartDate, long oldSession, long newSession){
+        for(long i = oldSession + 1; i <= newSession; i++){
+
+            LocalDate actualDate = newStartDate.plusDays(i-1);  // 새로운 시작 날짜 기준으로 actualDate 계산
+
+            for (PlanType planType : PlanType.values()){
+                Schedule newSchedule = Schedule.builder()
+                        .room(room)
+                        .actualDate(actualDate)
+                        .planType(planType)
+                        .build();
+                scheduleRepository.save(newSchedule);
+            }
+        }
+    }
+
+    private void deleteExtraSchedule(Room room, LocalDate newStartDate, long newSession, long oldSession){
+        for(long i = newSession + 1; i <= oldSession; i++){
+
+            LocalDate actualDate = newStartDate.plusDays(i-1);
+            List<Schedule> schedulesToDelete = scheduleRepository.findByRoomAndActualDate(room, actualDate);
+            scheduleRepository.deleteAll(schedulesToDelete);
+        }
     }
 
 }

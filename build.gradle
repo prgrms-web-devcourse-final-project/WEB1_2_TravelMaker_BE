@@ -31,6 +31,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.modelmapper:modelmapper:3.1.1'
+//    implementation 'com.amazonaws:aws-java-sdk-s3:1.12.779'
+    implementation 'software.amazon.awssdk:s3:2.20.38' // AWS SDK 2.x
+
 
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
@@ -45,7 +48,7 @@ dependencies {
     implementation 'com.google.code.gson:gson'
 
 
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+//    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
     // Jwt
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     implementation 'io.jsonwebtoken:jjwt-impl:0.11.5'
@@ -53,8 +56,22 @@ dependencies {
 
     // Swagger Setting
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.0.2'
+
+    //redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    //implementation 'io.lettuce.core:lettuce-core'
+    implementation 'org.springframework.session:spring-session-data-redis'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    implementation 'org.apache.tika:tika-core:2.9.0'
+
+
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+jar {
+    enabled = false
 }

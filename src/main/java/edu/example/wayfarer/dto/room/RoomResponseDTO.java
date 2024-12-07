@@ -15,24 +15,7 @@ public record RoomResponseDTO(
         LocalDate endDate,
         String roomCode,
         String hostEmail,
-        List<String> members,
-        String url
+        List<String> members
+//        String url
 ) {
-
-    public RoomResponseDTO(Room room) {
-        this(
-                room.getRoomId(),
-                room.getTitle(),
-                room.getCountry(),
-                room.getStartDate(),
-                room.getEndDate(),
-                room.getRoomCode(),
-                room.getHostEmail(),
-                room.getMemberRooms().stream().map(
-                        memberRoom -> memberRoom.getMember().getEmail()
-                ).toList(),
-                room.getUrl()
-        );
-    }
-
 }

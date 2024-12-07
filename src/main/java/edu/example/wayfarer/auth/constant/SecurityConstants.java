@@ -11,14 +11,16 @@ public class SecurityConstants {
             "/api/v1/replies/**",
             "/login",
             "/auth/kakao/callback/**",
+            "/auth/google/callback/**",
             "/auth/login/google", // 구글 경로 추가
+            "/auth/login/kakao",
             //"/login/oauth2/code/google", // OAuth 리다이렉트 경로 추가
             "/logout",
             "/refresh",
-            "/favicon.ico",
-            "/auth/logout",
+            //"/favicon.ico",
+            //"/auth/logout",
             "/auth/refresh",
-            //"/index.html"
+            "/index.html"
             //"/", // 메인페이지
      };
 

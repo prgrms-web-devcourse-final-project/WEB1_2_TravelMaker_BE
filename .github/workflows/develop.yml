@@ -1,0 +1,76 @@
+# 워크 플로우의 이름 지정 1
+name: CI/CD-DEV
+
+# 워크플로가 시작될 조건 지정
+on:
+  push:
+    # dev 브랜치에 push 가 발생할 때 실행
+    branches: [ dev ]
+
+jobs:
+  build:
+    # 실행 환경 지정
+    runs-on: ubuntu-latest
+    # 실행 스텝 지정
+    steps:
+      # 1. 레포지토리 코드 체크아웃
+      - uses: actions/checkout@v3
+      # 2. Java 17 환경 설정
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. application.properties 파일 생성 및 내용 추가
+      - run: touch ./src/main/resources/application.properties
+      - run: echo "${{secrets.APPLICATION_DEV}}" > ./src/main/resources/application.properties
+      - uses: actions/upload-artifact@v3
+        with:
+          name: application.properties
+          path: ./src/main/resources/application.properties
+
+      # 4. application-test.properties 파일 생성 및 내용 추가
+      - run: touch ./src/main/resources/application-test.properties
+      - run: echo "${{secrets.APPLICATION_DEV_TEST}}" > ./src/main/resources/application-test.properties
+      - uses: actions/upload-artifact@v3
+        with:
+          name: application-test.properties
+          path: ./src/main/resources/application-test.properties
+
+      # 5. Gradle Wrapper 에 실행 권한 부여
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # 6. Gradle 빌드 실행 ( 테스트 스킵 )
+      - name: Build with Gradle
+        run: ./gradlew clean build -x test
+
+      # 7. 현재 시간 가져오기
+      - name: Get current time
+        uses: josStorer/get-current-time@v2
+        id: current-time
+        with:
+          format: YYYY-MM-DDTHH-mm-ss
+          utcOffset: "+09:00"
+      # 8. 배포용패키지경로저장
+      - name: Set artifact
+        run: echo "artifact=$(ls ./build/libs)" >> $GITHUB_ENV
+
+      # 9. Elastic Beanstalk 에 배포
+      - name: Beanstalk Deploy
+        uses: einaregilsson/beanstalk-deploy@v20
+        with:
+          # AWS 엑세스 키
+          aws_access_key: ${{secrets.AWS_DEV_ACCESS_KEY}}
+          # AWS 시크릿 키
+          aws_secret_key: ${{secrets.AWS_DEV_SECRET_ACCESS_KEY}}
+          # Elastic Beanstalk 애플리케이션 이름
+          application_name: wayfarer-dev2
+          # Elastic Beanstalk 환경 이름
+          environment_name: Wayfarer-dev2-env
+          # 현재 시간을 사용한 버전 레이블
+          version_label: github-action-${{steps.current-time.outputs.formattedTime}}
+          # 배포 리전(서울)
+          region: ap-northeast-2
+          # 빌드된 jar 파일 경로
+          deployment_package: ./build/libs/${{env.artifact}}

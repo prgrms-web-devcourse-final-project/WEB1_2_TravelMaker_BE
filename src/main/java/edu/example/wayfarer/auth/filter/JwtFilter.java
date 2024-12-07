@@ -3,104 +3,99 @@ package edu.example.wayfarer.auth.filter;
 import edu.example.wayfarer.apiPayload.code.status.ErrorStatus;
 import edu.example.wayfarer.apiPayload.exception.handler.AuthHandler;
 import edu.example.wayfarer.auth.constant.SecurityConstants;
-import edu.example.wayfarer.auth.userdetails.PrincipalDetailsService;
 import edu.example.wayfarer.auth.util.JwtUtil;
+import edu.example.wayfarer.entity.Token;
+import edu.example.wayfarer.repository.TokenRepository;
 import edu.example.wayfarer.service.AuthService;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import javax.crypto.SecretKey;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @Slf4j
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final PrincipalDetailsService principalDetailsService;
-    private final AuthService authService; // 액세스 갱신을 위해
+    private final TokenRepository tokenRepository;
     private final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
-        boolean shouldSkip = path.startsWith("/login/oauth2/code/google") ||
-                path.startsWith("/auth/google/callback") ||
-                Arrays.stream(SecurityConstants.allowedUrls)
-                        .anyMatch(pattern -> antPathMatcher.match(pattern, path));
+        boolean shouldSkip = Arrays.stream(SecurityConstants.allowedUrls)
+                .anyMatch(pattern -> antPathMatcher.match(pattern, path));
 
-        log.info("Should skip JwtFilter for path {}: {}", path, shouldSkip); // 추가된 로그
+        log.info("Should skip JwtFilter for path {}: {}", path, shouldSkip);
         return shouldSkip;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        try {
-            String accessToken = jwtUtil.resolveAccessToken(request);
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+        String accessToken = jwtUtil.resolveAccessToken(request);
 
-            if (accessToken != null && jwtUtil.isAccessTokenValid(accessToken)) {
-                String email = jwtUtil.getEmail(accessToken);
-                UserDetails userDetails = principalDetailsService.loadUserByUsername(email);
-
-                if (userDetails != null) {
-                    UsernamePasswordAuthenticationToken authenticationToken =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails, "", userDetails.getAuthorities());
-                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+        if (accessToken != null) {
+            try {
+                if (jwtUtil.isAccessTokenValid(accessToken)) {
+                    // 유효한 Access Token인 경우, SecurityContext에 인증 정보 설정
+                    String email = jwtUtil.getEmail(accessToken);
+                    SecurityContextHolder.getContext().setAuthentication(jwtUtil.createAuthentication(email));
                 } else {
-                    throw new AuthHandler(ErrorStatus._NOT_FOUND_MEMBER);
+                    throw new ExpiredJwtException(null, null, "Access token expired");
                 }
-            } else {
-                log.warn("Access token is invalid or not present");
+            } catch (ExpiredJwtException e) {
+                log.info("[*] Access Token이 만료되었습니다. Refresh Token으로 재발급을 시도합니다.");
+                String email = jwtUtil.getEmailFromExpiredToken(accessToken); // 만료된 토큰에서 이메일 추출
+                if (email != null) {
+                    Optional<Token> tokenOptional = tokenRepository.findByEmail(email);
+                    if (tokenOptional.isPresent()) {
+                        String refreshToken = tokenOptional.get().getRefreshToken();
+                        if (refreshToken != null && jwtUtil.isRefreshTokenValid(refreshToken)) {
+                            jwtUtil.generateAndStoreTokens(email, "ROLE_USER", null, null);
+                            SecurityContextHolder.getContext().setAuthentication(jwtUtil.createAuthentication(email));
+                        } else {
+                            log.warn("[*] Refresh Token이 유효하지 않습니다. 인증에 실패했습니다.");
+                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.getWriter().write("Unauthorized - Token expired or invalid");
+                            return; // 필터 체인을 중단하고 응답을 반환합니다.
+                        }
+                    } else {
+                        log.warn("[*] 이메일에 해당하는 토큰을 찾을 수 없습니다.");
+                    }
+                } else {
+                    log.warn("[*] 만료된 토큰에서 이메일을 추출하지 못했습니다.");
+                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    response.getWriter().write("Unauthorized - Token expired or invalid");
+                    return;
+                }
             }
-        } catch (AuthHandler e) {
-            handleAuthError(e, response);
-            return;
+        } else {
+            log.warn("[*] No Access Token found in request");
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    private void handleAuthError(AuthHandler e, HttpServletResponse response) throws IOException {
-        if (ErrorStatus._AUTH_EXPIRE_TOKEN.equals(e.getErrorReasonHttpStatus().getCode())) {
-            log.error("Access Token expired: {}", e.getMessage());
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-            response.getWriter().write("Unauthorized - Access Token expired");
-        } else {
-            log.error("Authentication Error: {}", e.getMessage());
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-            response.getWriter().write("Unauthorized");
-        }
-    }
-
-    /**
-     * 쿠키에서 Access Token을 추출하는 메서드 추가
-     */
-    private String resolveAccessTokenFromCookies(HttpServletRequest request) {
-        if (request.getCookies() == null) {
-            log.warn("No cookies found in the request.");
-            return null;
-        }
-        for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
-            log.info("Checking cookie: {} with value: {}", cookie.getName(), cookie.getValue());
-            if ("accessToken".equals(cookie.getName())) {
-                log.info("Access Token found in cookies: {}", cookie.getValue());
-                return cookie.getValue();
-            }
-        }
-        log.warn("Access Token cookie not found.");
-        return null;
     }
 
 }

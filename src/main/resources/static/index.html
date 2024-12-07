@@ -16,12 +16,23 @@
         let stompClient; // stompClient 변수를 전역으로 설정
         let subscriptions = {}; // 구독 정보를 저장할 객체
 
+
         function connectWebSocket() {
             const url = $('#websocketUrl').val(); // 웹소켓 URL 가져오기
+            const token = $('#jwtToken').val(); // JWT 토큰 가져오기
 
+            if (!token) {
+                alert('JWT 토큰을 입력해주세요!');
+                return;
+            }
+
+            const socketUrl = `${url}?access_token=${token}`;
+            console.log("token", token);
+            console.log("socketUrl", socketUrl);
             // websocket URL을 사용하여 stompClient 초기화
-            stompClient = Stomp.client(url);
+            stompClient = Stomp.client(socketUrl);
             stompClient.connect({}, stompConnectHandler, stompErrorHandler);
+
         }
 
         function stompConnectHandler() {
@@ -114,6 +125,11 @@
     <div class="mb-3 input-group" style="width: 500px;">
         <input type="text" id="websocketUrl" class="form-control" placeholder="ws://localhost:8080/ws-stomp"/>
         <button id="connectBtn" class="btn btn-primary">CONN</button>
+    </div>
+
+    <!-- JWT 토큰 입력 필드 -->
+    <div class="mb-3 input-group" style="width: 500px;">
+        <input type="text" id="jwtToken" class="form-control" placeholder="JWT 토큰을 입력하세요"/>
     </div>
 
     <h2>SUBSCRIBE</h2>
