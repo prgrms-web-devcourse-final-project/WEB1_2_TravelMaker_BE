@@ -14,7 +14,7 @@ public class ScheduleServiceTests {
 
     @Test
     public void testList(){
-        String roomId = "bVuHxg6Q";
+        String roomId = "03TbDZWO";
 
         List<ScheduleListDTO> list = scheduleService.getScheduleListByRoomId(roomId);
         System.out.println(list);

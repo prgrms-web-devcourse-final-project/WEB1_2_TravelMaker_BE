@@ -7,12 +7,11 @@ import edu.example.wayfarer.auth.util.JwtUtil;
 import edu.example.wayfarer.auth.util.KakaoUtil;
 import edu.example.wayfarer.converter.AuthConverter;
 import edu.example.wayfarer.dto.GoogleUserInfo;
-import edu.example.wayfarer.entity.Member;
 import edu.example.wayfarer.dto.KakaoDTO;
+import edu.example.wayfarer.entity.Member;
 import edu.example.wayfarer.entity.Token;
 import edu.example.wayfarer.repository.MemberRepository;
 import edu.example.wayfarer.repository.TokenRepository;
-import edu.example.wayfarer.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -36,15 +35,22 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
 
     @Override
-    public Member kakaoLogin(String accessCode, HttpServletResponse httpServletResponse) {
-        KakaoDTO.OAuthToken oAuthToken = kakaoUtil.requestToken(accessCode);
-        KakaoDTO.KakaoProfile kakaoProfile = kakaoUtil.requestProfile(oAuthToken);
+    public Member kakaoLogin(String accessCode) {
+        KakaoDTO.OAuthToken oAuthToken = kakaoUtil.getAccessToken(accessCode);
+        KakaoDTO.KakaoProfile kakaoProfile = kakaoUtil.getUserInfo(oAuthToken);
 
         Optional<Member> queryUser = memberRepository.findByEmail(kakaoProfile.getKakao_account().getEmail());
 
         Member member;
         if (queryUser.isPresent()) {
             member = queryUser.get();
+
+            // 기존에 존재하는 토큰이 있다면 폐기
+            tokenRepository.findByEmail(member.getEmail()).ifPresent(token -> {
+                kakaoUtil.revokeToken(token.getSocialAccessToken()); // 기존 토큰 폐기
+                tokenRepository.deleteByEmail(member.getEmail()); // Redis에서도 토큰 삭제
+            });
+
         } else {
             String randomPassword = UUID.randomUUID().toString();
             member = AuthConverter.toUser(
@@ -56,44 +62,27 @@ public class AuthServiceImpl implements AuthService {
             memberRepository.save(member);
         }
 
-        // 기존 토큰 삭제
-        tokenRepository.deleteByMember_Email(member.getEmail());
-
-        // 새로운 Access Token과 Refresh Token 생성
-        String accessToken = jwtUtil.createAccessToken(member.getEmail(), member.getRole());
-        String refreshToken = jwtUtil.createRefreshToken(member.getEmail());
-
-        // 토큰 만료 시간 계산
-        LocalDateTime accessTokenExpiryDate = LocalDateTime.now().plusSeconds(jwtUtil.getAccessTokenValiditySeconds());
-        LocalDateTime refreshTokenExpiryDate = LocalDateTime.now().plusSeconds(jwtUtil.getRefreshTokenValiditySeconds());
-
-        // 토큰 저장
-        Token token = Token.builder()
-                .member(member)
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .socialAccessToken(oAuthToken.getAccess_token())
-                .provider("kakao") // 소셜 제공자 설정
-                .accessTokenExpiryDate(accessTokenExpiryDate)
-                .refreshTokenExpiryDate(refreshTokenExpiryDate)
-                .build();
-        tokenRepository.save(token);
-
-        // JWT Access Token과 Refresh Token을 HttpOnly 쿠키에 설정
-        setCookie(httpServletResponse, "accessToken", accessToken, jwtUtil.getAccessTokenValiditySeconds(), false);
-        setCookie(httpServletResponse, "refreshToken", refreshToken, jwtUtil.getRefreshTokenValiditySeconds(), false);
+        // JWT 토큰 생성 및 Redis 저장 로직을 JwtUtil로 이동
+        jwtUtil.generateAndStoreTokens(member.getEmail(), member.getRole(), oAuthToken.getAccess_token(), "kakao");
 
         return member;
     }
 
     @Override
-    public Member googleLogin(GoogleUserInfo userInfo, HttpServletResponse httpServletResponse) {
-        Optional<Member> queryUser = memberRepository.findByEmail(userInfo.getEmail());
+    public Member googleLogin(GoogleUserInfo userInfo) {
+        Optional<Member> queryUser = memberRepository.findByEmail(userInfo.getEmail());//email로 기존에 존재하던 사람인지 옵셔널
 
         Member member;
         if (queryUser.isPresent()) {
             member = queryUser.get();
-        } else {
+
+            // 기존에 존재하는 토큰이 있다면 폐기
+            tokenRepository.findByEmail(member.getEmail()).ifPresent(token -> {
+                googleUtil.revokeToken(token.getSocialAccessToken()); // 기존 토큰 폐기 ->로그인에서 다시 로그인한 것
+                tokenRepository.deleteByEmail(member.getEmail()); // Redis에서도 토큰 삭제
+            });
+
+        } else {//회원가입
             String randomPassword = UUID.randomUUID().toString();
             member = AuthConverter.toUser(
                     userInfo.getEmail(),
@@ -104,53 +93,13 @@ public class AuthServiceImpl implements AuthService {
             memberRepository.save(member);
         }
 
-        // 기존 토큰 삭제
-        tokenRepository.deleteByMember_Email(member.getEmail());
-
-        // 새로운 Access Token과 Refresh Token 생성
-        String accessToken = jwtUtil.createAccessToken(member.getEmail(), member.getRole());
-        String refreshToken = jwtUtil.createRefreshToken(member.getEmail());
-
-        // Google Access Token 가져오기
-        String googleAccessToken = userInfo.getGoogleAccessToken();
-
-        // 토큰 만료 시간 계산 (초 단위)
-        LocalDateTime accessTokenExpiryDate = LocalDateTime.now().plusSeconds(jwtUtil.getAccessTokenValiditySeconds());
-        LocalDateTime refreshTokenExpiryDate = LocalDateTime.now().plusSeconds(jwtUtil.getRefreshTokenValiditySeconds());
-
-        // 토큰 저장
-        Token token = Token.builder()
-                .member(member)
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .socialAccessToken(googleAccessToken)
-                .provider("google")
-                .accessTokenExpiryDate(accessTokenExpiryDate)
-                .refreshTokenExpiryDate(refreshTokenExpiryDate)
-                .build();
-        tokenRepository.save(token);
-
-        // JWT Access Token과 Refresh Token을 HttpOnly 쿠키에 설정
-        setCookie(httpServletResponse, "accessToken", accessToken, jwtUtil.getAccessTokenValiditySeconds(), false);
-        setCookie(httpServletResponse, "refreshToken", refreshToken, jwtUtil.getRefreshTokenValiditySeconds(), false);
+        // JWT 토큰 생성 및 Redis 저장 로직을 JwtUtil로 이동
+        jwtUtil.generateAndStoreTokens(member.getEmail(), member.getRole(), userInfo.getGoogleAccessToken(), "google");
 
         return member;
     }
 
-    // 공통 쿠키 설정 메서드
-    private void setCookie(HttpServletResponse response, String name, String value, long maxAge, boolean isSecure) {
-        Cookie cookie = new Cookie(name, value);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(isSecure); // 프로덕션 환경에서는 true로 설정
-        cookie.setPath("/");
-        cookie.setMaxAge((int) maxAge);
-        // 쿠키에 SameSite 속성 설정
-        response.addHeader("Set-Cookie",
-                String.format("%s=%s; Max-Age=%d; Path=%s; HttpOnly; %s",
-                        name, value, maxAge, "/", (isSecure ? "Secure; " : "") + "SameSite=None"));
-        response.addCookie(cookie);
-    }
-
+    // AuthServiceImpl.java
     @Override
     public String refreshAccessToken(String refreshToken) {
         // Refresh Token 유효성 검증
@@ -159,7 +108,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // Refresh Token으로 사용자 이메일 추출
-        String email = jwtUtil.getEmailFromRefreshToken(refreshToken);
+        String email = jwtUtil.getEmail(refreshToken);
         Optional<Token> optionalToken = tokenRepository.findByRefreshToken(refreshToken);
 
         if (optionalToken.isEmpty()) {
@@ -168,20 +117,15 @@ public class AuthServiceImpl implements AuthService {
 
         Token token = optionalToken.get();
 
-        // Refresh Token 만료 여부 확인
-        if (token.getRefreshTokenExpiryDate().isBefore(LocalDateTime.now())) {
-            throw new AuthHandler(ErrorStatus._AUTH_EXPIRE_TOKEN);
-        }
-
         // 새로운 Access Token과 Refresh Token 생성
-        String newAccessToken = jwtUtil.createAccessToken(email, token.getMember().getRole());
+        String newAccessToken = jwtUtil.createAccessToken(email, token.getProvider());
         String newRefreshToken = jwtUtil.createRefreshToken(email);
 
         // 토큰 만료 시간 계산
         LocalDateTime newAccessTokenExpiryDate = LocalDateTime.now().plusSeconds(jwtUtil.getAccessTokenValiditySeconds());
         LocalDateTime newRefreshTokenExpiryDate = LocalDateTime.now().plusSeconds(jwtUtil.getRefreshTokenValiditySeconds());
 
-        // 기존 토큰 업데이트 (Social Access Token 및 Provider는 유지)
+        // 기존 토큰 업데이트
         token.updateJwtTokens(newAccessToken, newAccessTokenExpiryDate, newRefreshToken, newRefreshTokenExpiryDate);
         tokenRepository.save(token);
 
@@ -189,26 +133,19 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void revokeAndDeleteToken(String email) throws AuthHandler { // 로그아웃
-        // 사용자에게 할당된 토큰 조회
-        Optional<Token> optionalToken = tokenRepository.findByMember_Email(email);
+    public void revokeAndDeleteToken(String email) throws AuthHandler { //소셜서버에 토큰 삭제 알리기 및 우리 토큰 삭제
+        Optional<Token> optionalToken = tokenRepository.findByEmail(email);
         if (optionalToken.isEmpty()) {
             throw new AuthHandler(ErrorStatus._TOKEN_NOT_FOUND);
         }
 
         Token token = optionalToken.get();
 
-        String socialAccessToken = token.getSocialAccessToken();
-        String provider = token.getProvider();
-
-        if (socialAccessToken != null && !socialAccessToken.isEmpty()) {
-            if ("google".equalsIgnoreCase(provider)) {
-                // 구글 Access Token을 이용하여 로그아웃 처리 (토큰 폐기)
-                googleUtil.revokeToken(socialAccessToken);
-            } else if ("kakao".equalsIgnoreCase(provider)) {
-                // 카카오 Access Token을 이용하여 로그아웃 처리 (토큰 폐기)
-                kakaoUtil.revokeToken(socialAccessToken);
-            }
+        if(token.getProvider().equals("google")) {
+            // Google Access Token 폐기
+            googleUtil.revokeToken(token.getSocialAccessToken());
+        }else{
+            kakaoUtil.revokeToken(token.getSocialAccessToken());
         }
 
         // 토큰 삭제

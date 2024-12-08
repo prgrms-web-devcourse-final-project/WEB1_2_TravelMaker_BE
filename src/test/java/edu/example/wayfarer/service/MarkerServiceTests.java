@@ -6,7 +6,7 @@ import edu.example.wayfarer.dto.marker.MarkerResponseDTO;
 import edu.example.wayfarer.dto.marker.MarkerUpdateDTO;
 import edu.example.wayfarer.entity.*;
 import edu.example.wayfarer.entity.enums.Color;
-import edu.example.wayfarer.entity.enums.Days;
+//import edu.example.wayfarer.entity.enums.Days;
 import edu.example.wayfarer.entity.enums.PlanType;
 import edu.example.wayfarer.repository.*;
 import org.junit.jupiter.api.*;
@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @SpringBootTest
-//@TestPropertySource(locations = "classpath:application-test.properties")
+@TestPropertySource(locations = "classpath:application-test.properties")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class MarkerServiceTests {
     @Autowired
@@ -79,19 +79,21 @@ public class MarkerServiceTests {
             // 임의의 스케쥴 생성
             List<Schedule> schedules = new ArrayList<>();
 
+
             long daysBetween = ChronoUnit.DAYS.between(start, end)+1;
-            Days[] days = Days.values();
+//            Days[] days = Days.values();
             for (int i = 0; i < daysBetween; i++) {
                 for (int j = 0; j<2; j++) {
                     Schedule schedule = Schedule.builder()
                             .room(savedRoom)
-                            .date(days[i])
+//                            .date(days[i])
                             .planType(PlanType.values()[j])
                             .build();
 
                     schedules.add(schedule);
                 }
             }
+
             scheduleRepository.saveAll(schedules);
             Member foundMember = memberRepository.findById("member1@abc.com")
                     .orElseThrow(() -> new RuntimeException("Member not found"));
@@ -110,9 +112,9 @@ public class MarkerServiceTests {
     @Test
     @Order(2)
     public void testCreateMarker() {
-        for (int i=0; i<3; i++) {
+//        for (int i=0; i<3; i++) {
             MarkerRequestDTO markerRequestDTO = new MarkerRequestDTO(
-                    "member1@abc.com",
+                    "aa@aa.com",
                     1L,
                     37.552,
                     126.988
@@ -120,9 +122,9 @@ public class MarkerServiceTests {
 
             MarkerResponseDTO markerResponseDTO = markerService.create(markerRequestDTO);
 
-            System.out.println("2. 마커 생성 테스트" + i);
+//            System.out.println("2. 마커 생성 테스트" + i);
             System.out.println(markerResponseDTO);
-        }
+//        }
     }
 
     @Test

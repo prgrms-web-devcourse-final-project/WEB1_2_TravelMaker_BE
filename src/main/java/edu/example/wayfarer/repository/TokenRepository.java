@@ -1,13 +1,14 @@
 package edu.example.wayfarer.repository;
 
 import edu.example.wayfarer.entity.Token;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-public interface TokenRepository extends JpaRepository<Token, Long> {
+@Repository
+public interface TokenRepository extends CrudRepository<Token, String> {
     Optional<Token> findByRefreshToken(String refreshToken);
-    Optional<Token> findByMember_Email(String email);
-    Optional<Token> findBySocialAccessToken(String socialAccessToken);
-    void deleteByMember_Email(String email);
+    Optional<Token> findByEmail(String email);
+    void deleteByEmail(String email);
 }

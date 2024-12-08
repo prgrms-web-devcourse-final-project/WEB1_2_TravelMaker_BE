@@ -10,9 +10,9 @@ import java.util.List;
 
 public interface RoomService {
 
-    RoomResponseDTO create(RoomRequestDTO roomRequestDTO);
+    RoomResponseDTO create(RoomRequestDTO roomRequestDTO, String email);
     RoomResponseDTO read(String roomId);
-    RoomResponseDTO update(RoomUpdateDTO roomUpdateDTO);
+    RoomResponseDTO update(RoomUpdateDTO roomUpdateDTO, String email);
     void delete(Member member, String roomId);
 //    List<RoomListDTO> getList();
 }

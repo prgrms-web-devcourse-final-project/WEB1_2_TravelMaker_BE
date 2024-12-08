@@ -3,6 +3,8 @@ package edu.example.wayfarer.service;
 import edu.example.wayfarer.dto.room.RoomRequestDTO;
 import edu.example.wayfarer.dto.room.RoomResponseDTO;
 import edu.example.wayfarer.dto.room.RoomUpdateDTO;
+import edu.example.wayfarer.entity.Member;
+import edu.example.wayfarer.repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -22,19 +24,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class RoomServiceTest {
     @Autowired
     private RoomService roomService;
+    @Autowired
+    private MemberRepository memberRepository;
 
     @Test
     @Transactional
     @Commit
     public void testCreateRoom() {
         RoomRequestDTO roomRequestDTO = new RoomRequestDTO(
-                "고향",
-                "캐나다",
-                LocalDate.of(2024, 11, 29),
-                LocalDate.of(2024, 11, 30),
-                "jj@jj.com" // 임시 이메일
+                "테스트 그만 want 해요",
+                "testingC",
+                LocalDate.of(2024, 12, 30),
+                LocalDate.of(2025, 1, 02)
+
         );
-        RoomResponseDTO result = roomService.create(roomRequestDTO);
+        RoomResponseDTO result = roomService.create(roomRequestDTO, "aa@aa.com");
         assertNotNull(result);
     }
 
@@ -51,7 +55,7 @@ public class RoomServiceTest {
     @Transactional
     @Commit
     public void testUpdateRoom() {
-        String roomId = "TSNAnwj4";
+        String email = "aa@aa.com";
         RoomUpdateDTO roomUpdateDTO = new RoomUpdateDTO(
                 "TSNAnwj4", // roomId
                 "후후탕후루를먹자", // title
@@ -59,7 +63,7 @@ public class RoomServiceTest {
                 LocalDate.of(2025, 1, 1), // startDate
                 LocalDate.of(2025, 1, 3)  // endDate
         );
-        RoomResponseDTO result = roomService.update(roomUpdateDTO);
+        RoomResponseDTO result = roomService.update(roomUpdateDTO, email);
         assertNotNull(result);
         assertEquals("중국", result.country());
         assertEquals("후후탕후루를먹자", result.title());
@@ -70,6 +74,8 @@ public class RoomServiceTest {
     @Commit
     public void testDeleteRoom(){
         String roomId = "vTJBdpwg";
-        roomService.delete(roomId);
+        String email = "aa@aa.com";
+        Member member = memberRepository.findByEmail(email).get();
+        roomService.delete(member,roomId);
     }
 }

@@ -3,6 +3,7 @@ package edu.example.wayfarer.entity;
 
 
 import edu.example.wayfarer.util.RandomStringGenerator;
+import io.micrometer.common.util.StringUtils;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -11,7 +12,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @AllArgsConstructor
@@ -32,7 +32,7 @@ public class Room {
     private LocalDate endDate;
     private String roomCode;
     private String hostEmail;
-    private String url;
+//    private String url;
 
     @CreatedDate
     private LocalDateTime createdAt;
@@ -40,16 +40,16 @@ public class Room {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "room")
+    @OneToMany(mappedBy = "room", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MemberRoom> memberRooms;
 
     // Room 생성시 랜덤 roomId 할당
-    @PrePersist // when generating unique identifiers
+    @PrePersist
     public void generateRoomIdAndRoomCode(){
-        if(this.roomId == null || this.roomId.isBlank()){
+        if(StringUtils.isEmpty(roomId)){
             this.roomId = RandomStringGenerator.generateRandomString(8);
         }
-        if (this.roomCode == null || this.roomCode.isBlank()) {
+        if (StringUtils.isEmpty(roomCode)) {
             this.roomCode = RandomStringGenerator.generateRandomString(8);
         }
     }

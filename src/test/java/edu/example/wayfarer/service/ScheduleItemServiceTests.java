@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalTime;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
 // 해당 테스트는 MarkerServiceTests 를 수행 후 생성된 객체를 가지고 수행합니다.
 // 추후 수정 예정
 @SpringBootTest
-//@TestPropertySource(locations = "classpath:application-test.properties")
+@TestPropertySource(locations = "classpath:application-test.properties")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class ScheduleItemServiceTests {
     @Autowired

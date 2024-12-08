@@ -1,43 +1,34 @@
 package edu.example.wayfarer.entity;
 
-import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.redis.core.RedisHash;
+import org.springframework.data.redis.core.index.Indexed;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
-@Entity
+@RedisHash("Token") // Redis에 저장될 Hash 이름
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder
 @Getter
-public class Token {
+public class Token implements Serializable {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String email; // Redis에서는 ID를 고유 식별자로 사용
 
-    // 사용자와의 연관관계 설정 (OneToOne)
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "email", nullable = false, unique = true)
-    private Member member;
-
-    @Column(nullable = false, unique = true)
+    @Indexed // 조회에 빠르게 사용할 수 있도록 인덱스 설정
     private String accessToken;
 
-    @Column(nullable = false, unique = true)
     private String refreshToken;
 
-    @Column(nullable = false)
     private LocalDateTime accessTokenExpiryDate;
-
-    @Column(nullable = false)
     private LocalDateTime refreshTokenExpiryDate;
 
     // 변경된 필드: Social Access Token
-    @Column(nullable = true, unique = true)
     private String socialAccessToken;
 
     // 추가된 필드: 소셜 제공자 구분 (예: "google", "kakao")
-    @Column(nullable = false)
     private String provider;
 
     // JWT 토큰 업데이트 메서드
@@ -53,5 +44,4 @@ public class Token {
     public void updateSocialAccessToken(String newSocialAccessToken) {
         this.socialAccessToken = newSocialAccessToken;
     }
-
 }

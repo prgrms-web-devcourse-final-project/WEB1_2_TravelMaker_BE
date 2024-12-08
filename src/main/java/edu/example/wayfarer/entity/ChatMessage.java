@@ -1,12 +1,13 @@
 package edu.example.wayfarer.entity;
 
-import edu.example.wayfarer.entity.enums.ContentType;
-import edu.example.wayfarer.entity.enums.MessageType;
+//import edu.example.wayfarer.entity.enums.MessageType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
@@ -23,8 +24,8 @@ public class ChatMessage {
     private Long chatMessageId;
 
     @ManyToOne
-    @JoinColumn(name = "chatroom_id")
-    private Chatroom chatroom;
+    @JoinColumn(name = "room_id")
+    private Room room;
 
     @ManyToOne
     @JoinColumn(name = "email")
@@ -32,9 +33,14 @@ public class ChatMessage {
 
     private String content;
 
-    private ContentType contentType;
-    private MessageType messageType;
+//    private MessageType messageType;
+
     private LocalDateTime createdAt;
+
+    @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    public void changeContent(String content) {
+        this.content = content;
+    }
 }

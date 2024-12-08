@@ -2,20 +2,28 @@ package edu.example.wayfarer.repository;
 
 import edu.example.wayfarer.entity.Marker;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface MarkerRepository extends JpaRepository<Marker, Long> {
 
-    List<Marker> findBySchedule_ScheduleId(Long scheduleId);
+    List<Marker> findByScheduleScheduleId(Long scheduleId);
 
-    Optional<Marker> findByScheduleItem_ScheduleItemId(Long scheduleItemId);
+    Optional<Marker> findByScheduleItemScheduleItemId(Long scheduleItemId);
 
-    Boolean existsBySchedule_ScheduleId(Long scheduleId);
+    Boolean existsByScheduleScheduleId(Long scheduleId);
 
-    Long countBySchedule_ScheduleId(Long scheduleId);
+    Long countByScheduleScheduleId(Long scheduleId);
 
-    Long countBySchedule_ScheduleIdAndConfirmTrue(Long scheduleId);
+    Long countByScheduleScheduleIdAndConfirmTrue(Long scheduleId);
+
+    @Modifying
+    @Query("DELETE FROM Marker m WHERE m.schedule.scheduleId IN (" +
+            "SELECT s.scheduleId FROM Schedule s WHERE s.room.roomId = :roomId)")
+    void deleteByRoomId(@Param("roomId") String roomId);
 
 }
